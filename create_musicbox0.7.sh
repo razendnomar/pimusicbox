@@ -1,6 +1,6 @@
 MIN_FREE_SPACE_KB=$(expr 1024 \* 1024)
 PIMUSICBOX_FILES=/tmp/filechanges
-SHAIRPORT_VERSION=3.0.2
+SHAIRPORT_VERSION=3.1.7
 LIBRESPOT_VERSION=v20170717-910974e
 
 FREE_SPACE=$(df | awk '$NF == "/" { print $4 }')
@@ -44,15 +44,6 @@ EOF
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get remove --yes --purge python-pykka python-pylast
-# https://github.com/pimusicbox/pimusicbox/issues/316
-apt-get remove --yes --purge linux-wlan-ng
-
-# Ensure we reinstall the upstream config.
-apt-get install --yes -o Dpkg::Options::="--force-confmiss" --reinstall avahi-daemon
-
-# Get the packages required for setting wifi region
-apt-get install --yes wireless-regdb crda
 
 # Fix locale
 apt-get install --yes locales
@@ -63,6 +54,16 @@ sed -i -e 's/# en_GB.UTF-8 UTF-8/en_GB.UTF-8 UTF-8/' /etc/locale.gen
 echo -e 'LANG="en_GB.UTF-8"\nLANGUAGE="en_GB:en"' > /etc/default/locale
 dpkg-reconfigure --frontend=noninteractive locales
 update-locale LANG=en_GB.UTF-8
+
+apt-get remove --yes --purge python-pykka python-pylast
+# https://github.com/pimusicbox/pimusicbox/issues/316
+apt-get remove --yes --purge linux-wlan-ng
+
+# Ensure we reinstall the upstream config.
+apt-get install --yes -o Dpkg::Options::="--force-confmiss" --reinstall avahi-daemon
+
+# Get the packages required for setting wifi region
+apt-get install --yes wireless-regdb crda
 
 # Upgrade!
 apt-get dist-upgrade --yes -o Dpkg::Options::="--force-confnew"
@@ -94,24 +95,27 @@ dpkg -i mpd-watchdog_0.3.0-0tkem2_all.deb
 rm mpd-watchdog_0.3.0-0tkem2_all.deb
 
 # Need these to rebuild python dependencies
-PYTHON_BUILD_DEPS="build-essential python-dev libffi-dev libssl-dev"
+PYTHON_BUILD_DEPS="build-essential python-dev libffi-dev libssl-dev libxml2-dev libxmlsec1-dev"
 apt-get install --yes $PYTHON_BUILD_DEPS
 
 rm -rf /tmp/pip_build_root
-python -m pip install -U pip
+python -m pip install --upgrade pip setuptools
+# Attempted workarounds for SSL/TLS issues in old Python version.
+pip install --upgrade certifi urllib3[secure] requests[security] backports.ssl-match-hostname backports-abc
 # Upgrade some dependencies.
-pip install --upgrade requests[security] backports.ssl-match-hostname backports-abc tornado gmusicapi pykka pylast pafy youtube-dl
+pip install --upgrade tornado gmusicapi pykka pylast pafy youtube-dl
 # The lastest versions that are still supported in Wheezy (Gstreamer 0.10).
 pip install mopidy==1.1.2
 pip install mopidy-musicbox-webclient==2.4.0
-pip install mopidy-websettings==0.2.0
+pip install mopidy-websettings==0.2.1
 pip install mopidy-mopify==1.6.0
 pip install mopidy-mobile==1.8.0
 pip install mopidy-youtube==2.0.2
 pip install mopidy-gmusic==2.0.0
 pip install mopidy-spotify-web==0.3.0
 pip install mopidy-spotify-tunigo==1.0.0
-pip install mopidy-spotify==1.4.0
+# Custom version with Web API OAuth fix backported from v3.1.0
+pip install --no-deps --upgrade https://github.com/pimusicbox/mopidy-spotify/zipball/backport-oauth
 pip install mopidy-tunein==0.4.1
 pip install mopidy-local-sqlite==1.0.0
 pip install mopidy-scrobbler==1.1.1
@@ -131,8 +135,6 @@ mopidy --version
 mopidy deps | grep "/usr/lib" | grep -v -e "GStreamer: 0.10" -e "Python: CPython" | wc -l
 
 # A bunch of reckless hacks:
-# Force Spotify playlists to appear:
-sed -i '182s/^/#/' /usr/local/lib/python2.7/dist-packages/mopidy_spotify/session_manager.py
 # This should fix MPDroid trying to use MPD commands unsupported by Mopidy. But MPDroid still isn't working properly.
 #sed -i 's/0.19.0/0.18.0/' /usr/local/lib/python2.7/dist-packages/mopidy/mpd/protocol/__init__.py
 # Speedup MPD connections.
@@ -151,8 +153,6 @@ sed -i '222,+3 s/^/#/' /usr/local/lib/python2.7/dist-packages/mopidy_spotify_web
 sed -i '222i ]' /usr/local/lib/python2.7/dist-packages/mopidy_spotify_web/library.py
 # Hide broken Spotify Tunigo 'Genres & Moods', 'Featured Playlists' and 'Top Lists' browsing:
 sed -i '27,+8 s/^/#/' /usr/local/lib/python2.7/dist-packages/mopidy_spotify_tunigo/library.py
-# Hide broken Spotify browsing entirely:
-sed -i '/root_directory = / s/^/#/' /usr/local/lib/python2.7/dist-packages/mopidy_spotify/library.py
 
 cp -R $PIMUSICBOX_FILES/* /
 
@@ -169,9 +169,9 @@ do
     update-rc.d $service disable
 done
 
-# Update kernel to latest version (4.9.16).
+# Update kernel to latest version (4.14.20).
 apt-get install --yes git rpi-update
-PRUNE_MODULES=1 SKIP_WARNING=1 rpi-update 70d0e67030661cffbf863f66d71c59dff28fd20c
+PRUNE_MODULES=1 SKIP_WARNING=1 rpi-update e696d287001a06bea42b11992671f6c337e1385b
 
 # Remove unrequired packages (#426)
 apt-get remove --purge --yes xserver-common x11-xkb-utils xkb-data libxkbfile1 \

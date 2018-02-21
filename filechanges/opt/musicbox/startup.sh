@@ -10,8 +10,6 @@
 CONFIG_FILE=/boot/config/settings.ini
 NAME="MusicBox"
 
-SSH_START='/etc/init.d/dropbear start'
-
 echo "************************"
 echo "Initializing MusicBox..."
 echo "************************"
@@ -186,13 +184,7 @@ then
         echo "Create rsa-key for dropbear..."
         dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key
     fi
-
-    $SSH_START
-    #open ssh port
-    iptables -A INPUT -p tcp --dport 22 -j ACCEPT > /dev/null 2>&1 || true
-else
-    #close ssh port
-    iptables -A INPUT -p tcp --dport 22 -j DENY > /dev/null 2>&1 || true
+    /etc/init.d/dropbear start
 fi
 
 # start upnp if enabled
@@ -225,7 +217,13 @@ then
     then
         BITRATE="-b $INI__spotify__bitrate"
     fi
-    /opt/librespot/librespot -n "$CLEAN_NAME" $USER $PASS $BITRATE --onstart "/usr/bin/mpc stop" &
+    ONSTART="--onstart /opt/musicbox/mpc_stop.sh"
+    DEVICE_TYPE="--device-type speaker"
+    echo DAEMON_ARGS=\"-n $CLEAN_NAME $USER $PASS $BITRATE $ONSTART $DEVICE_TYPE\" > /etc/default/librespot
+    /etc/init.d/librespot start
+    ln -s /etc/monit/monitrc.d/librespot /etc/monit/conf.d/librespot > /dev/null 2>&1 || true
+else
+    rm /etc/monit/conf.d/librespot > /dev/null 2>&1 || true
 fi
 
 
